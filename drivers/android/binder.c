@@ -47,6 +47,8 @@
 #include <uapi/linux/android/binder.h>
 #include "binder_trace.h"
 
+#define BINDER_MIN_ALLOC (1 * PAGE_SIZE)
+
 static HLIST_HEAD(binder_devices);
 
 static struct dentry *binder_debugfs_dir_entry_root;
@@ -2883,7 +2885,7 @@ retry:
 	if (wait_for_proc_work)
 		proc->ready_threads++;
 
-	binder_unlock(__func__);
+	binder_unlock(proc->context, __func__);
 
 	trace_binder_wait_for_work(wait_for_proc_work,
 				   !!thread->transaction_stack,
@@ -2910,7 +2912,7 @@ retry:
 			ret = wait_event_freezable(thread->wait, binder_has_thread_work(thread));
 	}
 
-	binder_lock(__func__);
+	binder_lock(proc->context, __func__);
 
 	if (wait_for_proc_work)
 		proc->ready_threads--;
@@ -3441,7 +3443,6 @@ static long binder_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	int ret;
 	struct binder_proc *proc = filp->private_data;
-	struct binder_context *context = proc->context;
 	struct binder_thread *thread;
 	unsigned int size = _IOC_SIZE(cmd);
 	void __user *ubuf = (void __user *)arg;
@@ -3455,7 +3456,7 @@ static long binder_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	if (ret)
 		goto err_unlocked;
 
-	binder_lock(__func__);
+	binder_lock(proc->context, __func__);
 	thread = binder_get_thread(proc);
 	if (thread == NULL) {
 		ret = -ENOMEM;
@@ -3516,7 +3517,7 @@ static long binder_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 err:
 	if (thread)
 		thread->looper &= ~BINDER_LOOPER_STATE_NEED_RETURN;
-	binder_unlock(__func__);
+	binder_unlock(proc->context, __func__);
 	wait_event_interruptible(binder_user_error_wait, binder_stop_on_user_error < 2);
 	if (ret && ret != -ERESTARTSYS)
 		pr_info("%d:%d ioctl %x %lx returned %d\n", proc->pid, current->pid, cmd, arg, ret);
